@@ -1,1 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>樂齡大腦體操 - 超市購物計算產生器</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+    <style>
+        /* --- 基礎設定 (橘色超市購物主題) --- */
+        :root {
+            --primary-color: #ea580c;  /* 橘色系 */
+            --primary-hover: #c2410c;
+            --dark-color: #431407;
+            --bg-color: #fff7ed;
+            --border-color: #fdba74;
+            --accent-color: #f97316;
+        }
+
+        body { 
+            font-family: "PingFang TC", "Microsoft JhengHei", sans-serif; 
+            background: var(--bg-color); 
+            margin: 0; 
+            padding: 0;
+            color: #334155;
+        }
+        
+        .top-banner { background: var(--primary-color); height: 5px; width: 100%; }
+
+        /* --- 控制面板 --- */
+        .controls {
+            background: white; 
+            padding: 20px; 
+            border-radius: 0 0 16px 16px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            max-width: 900px; 
+            margin: 0 auto 20px auto; 
+        }
+        
+        .controls h2 { margin: 0 0 12px 0; color: var(--dark-color); font-size: 1.4rem; }
+
+        .designer-info {
+            background: #fff7ed; padding: 10px 14px; border-radius: 8px; font-size: 0.95rem;
+            color: #9a3412; margin-bottom: 15px; border-left: 4px solid var(--primary-color);
+            line-height: 1.6;
+        }
+        .designer-info a { color: #c2410c; text-decoration: none; font-weight: bold; border-bottom: 1px solid #c2410c; }
+        .designer-info a:hover { color: #ea580c; border-bottom-color: #ea580c; }
+
+        .control-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+        .control-group { display: flex; flex-direction: column; }
+        label { font-weight: bold; margin-bottom: 4px; color: #475569; font-size: 0.85rem; }
+        input, select { padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; }
+
+        .btn-group { grid-column: 1 / -1; display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+        button { flex: 1; min-width: 130px; padding: 12px; border: none; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; color: white; transition: all 0.2s; }
+        button:active { transform: scale(0.96); }
+        .gen-btn { background: var(--primary-color); }
+        .print-btn { background: #475569; }
+        .pdf-btn { background: #059669; }
+
+        /* --- 響應式 A4 預覽區 --- */
+        .preview-area { width: 100%; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; padding-bottom: 40px; }
+        
+        .sheet-scaler { transform-origin: top center; margin-bottom: 15px; }
+
+        /* A4 紙張本體 */
+        .sheet {
+            background: white; 
+            width: 210mm; 
+            height: 297mm; 
+            padding: 8mm 15mm; /* 微調上下邊距確保內容不溢出 */
+            box-sizing: border-box; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden; 
+            position: relative;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+
+        /* --- 紙張內部佈局 --- */
+        .sheet-header { border-bottom: 2px solid #431407; padding-bottom: 4px; margin-bottom: 6px; }
+        .sheet-title { text-align: center; font-size: 24pt; font-weight: 900; margin-bottom: 4px; color: #431407; line-height: 1.2; letter-spacing: 2px; }
+        .sheet-info { display: flex; justify-content: space-between; font-size: 11pt; font-weight: bold; color: #334155; }
+
+        .instruction-text {
+            text-align: center; color: #9a3412; font-weight: 800; font-size: 11pt;
+            margin-bottom: 4px; background: #ffedd5; padding: 6px; border-radius: 6px; border: 1px solid #fed7aa;
+        }
+
+        /* 區塊標題 */
+        .section-title {
+            font-size: 13pt; font-weight: bold; color: #9a3412; 
+            margin: 6px 0 4px 0; border-left: 5px solid var(--accent-color); padding-left: 10px;
+        }
+
+        /* --- 上半部：參考數據表格 (4x4 網格) --- */
+        .ref-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 4px;
+        }
+        .ref-item {
+            background: #fafaf9; border: 2px solid #e5e5e5; border-radius: 8px; 
+            padding: 6px 4px; text-align: center; display: flex; flex-direction: column; justify-content: center;
+            align-items: center; gap: 4px; position: relative;
+        }
+        /* 模擬超市特價標籤 */
+        .ref-item::before {
+            content: "特價"; position: absolute; top: -6px; left: -6px; background: #dc2626; color: white;
+            font-size: 7pt; padding: 2px 4px; border-radius: 4px; font-weight: bold;
+        }
+        .ref-name { font-size: 14pt; font-weight: bold; color: #1c1917; line-height: 1.2;}
+        .ref-price-row { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; margin-top: 2px;}
+        .ref-unit { font-size: 11pt; color: #78716c; font-weight: bold; }
+        .ref-value { font-size: 13pt; font-weight: 900; color: #ea580c; background: #ffedd5; border-radius: 6px; padding: 2px 8px;}
+
+        /* --- 下半部：測驗作答區 (2x5 網格) --- */
+        .quiz-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 24px; flex-grow: 1; align-content: start;
+        }
+        .quiz-item {
+            display: flex; flex-direction: column; justify-content: center;
+            border-bottom: 2px dashed #cbd5e1; padding: 12px 4px 10px 4px; /* 微調上下間距，避免頁尾被裁切 */
+        }
+        .quiz-question { display: flex; align-items: baseline; margin-bottom: 6px;} /* 增加題目與答案線的距離 */
+        .quiz-no { font-weight: bold; color: #ea580c; width: 28px; font-size: 13pt; }
+        .quiz-text { font-weight: bold; color: #1e293b; font-size: 13pt; letter-spacing: 0.5px;}
+        .quiz-ans-area { display: flex; justify-content: flex-end; align-items: center; width: 100%; font-size: 13pt; font-weight: bold; color: #475569;}
+        .quiz-ans-input { display: inline-block; width: 120px; border-bottom: 2px solid #475569; margin: 0 6px; text-align: center; color: #dc2626; height: 24px; } /* 增加作答區寬度到 120px，並加粗底線 */
+        
+        .sheet-footer { 
+            display: flex; justify-content: space-between; font-size: 10pt; font-weight: bold; color: #64748b; 
+            margin-top: auto; padding-top: 6px; padding-bottom: 2px; border-top: 1px solid #e2e8f0;
+        }
+
+        #hidden-capture-container { position: fixed; top: 0; left: -5000px; width: 210mm; background: white; z-index: -9999; }
+
+        @media print {
+            @page { margin: 0; size: A4 portrait; }
+            body { padding: 0; background: white; }
+            .controls, .top-banner { display: none; }
+            .preview-area { padding: 0; }
+            .sheet-scaler { transform: none !important; margin: 0; height: auto !important; }
+            .sheet { box-shadow: none; margin: 0; page-break-after: always; }
+        }
+
+        @media (max-width: 600px) {
+            body { padding: 0; }
+            .controls { padding: 15px; border-radius: 0; }
+            .btn-group button { min-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="top-banner"></div>
+
+<div class="controls no-print">
+    <h2>🛒 樂齡大腦體操 - 超市購物計算產生器</h2>
+    <div class="designer-info">
+        目的：訓練視覺搜尋、日常生活金錢計算與執行功能。<br>
+        版面配置：<b>上半部為超市商品價格表，下半部為購物清單算數題。</b><br>
+        玩法：請長輩根據上方特價表，尋找清單中的商品單價，並計算出每次購物的總花費。<br>
+        設計理念：模擬真實生活情境，不僅動腦也具備高度實用性。<br>
+        設計者：<a href="https://www.facebook.com/profile.php?id=100063748491881" target="_blank">鍾孟修 職能治療師 (邀請大家點入追蹤)</a>
+    </div>
+
+    <div class="control-grid">
+        <div class="control-group">
+            <label>📝 訓練卷標題</label>
+            <input type="text" id="titleInput" value="精打細算購物挑戰">
+        </div>
+
+        <div class="control-group">
+            <label>📄 產生頁數</label>
+            <input type="number" id="pageCount" value="1" min="1" max="10">
+        </div>
+
+        <div class="control-group">
+            <label>👀 答案顯示</label>
+            <select id="answerMode">
+                <option value="end" selected>於末頁附上解答</option>
+                <option value="none">不需要解答頁</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button class="gen-btn" onclick="generateSheets()">✨ 重新產生測驗卷</button>
+        <button class="print-btn" onclick="window.print()">🖨️ 直接列印</button>
+        <button class="pdf-btn" id="pdfBtn" onclick="downloadPDF()">📱 下載 PDF</button>
+    </div>
+</div>
+
+<div class="preview-area" id="outputArea"></div>
+
+<div id="hidden-capture-container"></div>
+
+<script>
+    // 建立超市商品資料庫 
+    const GROCERY_DB = [
+        { name: '鮮奶', unit: '瓶', price: 90 },
+        { name: '雞蛋', unit: '盒', price: 65 },
+        { name: '高麗菜', unit: '顆', price: 45 },
+        { name: '白米', unit: '包', price: 150 },
+        { name: '沙拉油', unit: '瓶', price: 120 },
+        { name: '醬油', unit: '瓶', price: 55 },
+        { name: '衛生紙', unit: '串', price: 110 },
+        { name: '青蔥', unit: '把', price: 20 },
+        { name: '豬肉片', unit: '盒', price: 85 },
+        { name: '鮭魚', unit: '片', price: 130 },
+        { name: '蘋果', unit: '顆', price: 25 },
+        { name: '香蕉', unit: '串', price: 40 },
+        { name: '吐司', unit: '條', price: 45 },
+        { name: '豆腐', unit: '盒', price: 15 },
+        { name: '玉米', unit: '根', price: 18 },
+        { name: '洋蔥', unit: '袋', price: 50 },
+        { name: '洗衣精', unit: '瓶', price: 140 },
+        { name: '洗髮乳', unit: '瓶', price: 125 },
+        { name: '牙膏', unit: '條', price: 65 },
+        { name: '餅乾', unit: '包', price: 35 },
+        { name: '燕麥片', unit: '罐', price: 160 },
+        { name: '奇異果', unit: '顆', price: 20 },
+        { name: '罐頭', unit: '罐', price: 30 },
+        { name: '麵條', unit: '包', price: 40 }
+    ];
+
+    function shuffleArray(array) {
+        let copy = [...array];
+        for (let i = copy.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy;
+    }
+
+    function generatePageData() {
+        // 隨機抽選 16 個商品放在上半部參考表 (4x4)
+        let refItems = shuffleArray(GROCERY_DB).slice(0, 16);
+        
+        let quizItems = [];
+        // 產生 10 題購物清單計算 (每題10分，排版適合 2x5 網格)
+        for (let i = 0; i < 10; i++) {
+            // 決定題目類型： 
+            // 0: 買 A (1個) + 買 B (1個)
+            // 1: 買 A (2個) + 買 B (1個)
+            // 2: 買 A (1個) + B (1個) + C (1個)
+            let type = Math.floor(Math.random() * 3);
+            let qText = "";
+            let ans = 0;
+            
+            // 從這 16 個上架商品裡抽樣來出題
+            let items = shuffleArray(refItems); 
+            
+            if (type === 0) { 
+                let item1 = items[0];
+                let item2 = items[1];
+                qText = `買 1${item1.unit} ${item1.name} ＋ 1${item2.unit} ${item2.name}`;
+                ans = item1.price + item2.price;
+            } else if (type === 1) { 
+                let item1 = items[0];
+                let item2 = items[1];
+                qText = `買 2${item1.unit} ${item1.name} ＋ 1${item2.unit} ${item2.name}`;
+                ans = (item1.price * 2) + item2.price;
+            } else { 
+                let item1 = items[0];
+                let item2 = items[1];
+                let item3 = items[2];
+                qText = `買 1${item1.unit}${item1.name}、1${item2.unit}${item2.name} 加 1${item3.unit}${item3.name}`;
+                ans = item1.price + item2.price + item3.price;
+            }
+            
+            quizItems.push({ question: qText, answer: ans });
+        }
+        
+        return { refItems, quizItems };
+    }
+
+    function updateScale() {
+        const previewArea = document.getElementById('outputArea');
+        const scalers = document.querySelectorAll('.sheet-scaler');
+        if (scalers.length === 0) return;
+
+        const containerWidth = previewArea.clientWidth - 30;
+        const sheetWidthPx = 210 * 3.7795; 
+        
+        let scale = containerWidth / sheetWidthPx;
+        if (scale > 1) scale = 1;
+
+        scalers.forEach(el => {
+            el.style.transform = `scale(${scale})`;
+            el.style.height = (297 * 3.7795 * scale) + "px";
+        });
+    }
+
+    window.addEventListener('resize', updateScale);
+
+    function generateSheets() {
+        const title = document.getElementById('titleInput').value;
+        const pages = parseInt(document.getElementById('pageCount').value);
+        const answerMode = document.getElementById('answerMode').value;
+        const container = document.getElementById('outputArea');
+
+        container.innerHTML = '';
+        let sheetsData = [];
+
+        for (let i = 1; i <= pages; i++) {
+            const data = generatePageData();
+            sheetsData.push(data);
+
+            const scaler = document.createElement('div');
+            scaler.className = 'sheet-scaler';
+            
+            const sheetDiv = document.createElement('div');
+            sheetDiv.className = 'sheet';
+            
+            sheetDiv.innerHTML = `
+                <div class="sheet-header">
+                    <div class="sheet-title">${title}</div>
+                    <div class="sheet-info">
+                        <span>姓名：__________</span>
+                        <span>日期：___月___日</span>
+                        <span>得分：____ / 100</span>
+                    </div>
+                </div>
+                
+                <div class="instruction-text">💡 購物大挑戰：請查看上方「超市特價表」算出總花費！(共10題，每題10分)</div>
+                
+                <div class="section-title">🛒 超市特價表</div>
+                <div class="ref-grid">
+                    ${data.refItems.map(item => `
+                        <div class="ref-item">
+                            <div class="ref-name">${item.name}</div>
+                            <div class="ref-price-row">
+                                <span class="ref-unit">(每${item.unit})</span>
+                                <span class="ref-value">${item.price}元</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div class="section-title">📝 購物清單算算看</div>
+                <div class="quiz-grid">
+                    ${data.quizItems.map((q, idx) => `
+                        <div class="quiz-item">
+                            <div class="quiz-question">
+                                <span class="quiz-no">${idx + 1}.</span>
+                                <span class="quiz-text">${q.question}</span>
+                            </div>
+                            <div class="quiz-ans-area">
+                                共 <span class="quiz-ans-input"></span> 元
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div class="sheet-footer">
+                    <span>測驗卷 - 第 ${i} 頁</span>
+                    <span>設計者：鍾孟修 職能治療師</span>
+                </div>
+            `;
+            scaler.appendChild(sheetDiv);
+            container.appendChild(scaler);
+        }
+
+        // 產生解答頁
+        if (answerMode === 'end') {
+            sheetsData.forEach((data, i) => {
+                const pageNum = i + 1;
+                const scaler = document.createElement('div');
+                scaler.className = 'sheet-scaler';
+                
+                const ansSheetDiv = document.createElement('div');
+                ansSheetDiv.className = 'sheet';
+                
+                ansSheetDiv.innerHTML = `
+                    <div class="sheet-header">
+                        <div class="sheet-title">${title} - 解答</div>
+                    </div>
+                    
+                    <div class="section-title">🛒 超市特價表</div>
+                    <div class="ref-grid">
+                        ${data.refItems.map(item => `
+                            <div class="ref-item">
+                                <div class="ref-name">${item.name}</div>
+                                <div class="ref-price-row">
+                                    <span class="ref-unit">(每${item.unit})</span>
+                                    <span class="ref-value">${item.price}元</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="section-title">📝 購物清單解答區</div>
+                    <div class="quiz-grid">
+                        ${data.quizItems.map((q, idx) => `
+                            <div class="quiz-item">
+                                <div class="quiz-question">
+                                    <span class="quiz-no">${idx + 1}.</span>
+                                    <span class="quiz-text">${q.question}</span>
+                                </div>
+                                <div class="quiz-ans-area">
+                                    共 <span class="quiz-ans-input">${q.answer}</span> 元
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="sheet-footer">
+                        <span>解答卷 - 對應第 ${pageNum} 頁題目</span>
+                        <span>設計者：鍾孟修 職能治療師</span>
+                    </div>
+                `;
+                scaler.appendChild(ansSheetDiv);
+                container.appendChild(scaler);
+            });
+        }
+        
+        setTimeout(updateScale, 100);
+    }
+
+    async function downloadPDF() {
+        const { jsPDF } = window.jspdf;
+        const btn = document.getElementById('pdfBtn');
+        const originalText = btn.innerText;
+        const sheets = document.querySelectorAll('.sheet');
+        const hiddenContainer = document.getElementById('hidden-capture-container');
+        
+        if (sheets.length === 0) return alert("請先產生測驗卷");
+
+        btn.disabled = true;
+        btn.innerText = "⏳ 處理中...";
+
+        try {
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            
+            for (let i = 0; i < sheets.length; i++) {
+                btn.innerText = `⏳ 正在生成第 ${i+1}/${sheets.length} 頁...`;
+                
+                const clone = sheets[i].cloneNode(true);
+                clone.style.transform = "none";
+                clone.style.margin = "0";
+                hiddenContainer.appendChild(clone);
+
+                const canvas = await html2canvas(clone, { 
+                    scale: 2.5,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff',
+                    width: 210 * 3.7795,
+                    height: 297 * 3.7795,
+                    windowWidth: 210 * 3.7795
+                });
+                
+                hiddenContainer.removeChild(clone);
+
+                const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                if (i > 0) pdf.addPage();
+                pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+            }
+            pdf.save('超市購物計算測驗卷.pdf');
+        } catch (err) {
+            console.error(err);
+            alert("PDF 下載失敗。若使用手機，建議改點擊「列印」後選擇「另存為 PDF」。");
+        } finally {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    }
+
+    window.onload = generateSheets;
+</script>
+
+</body>
+</html>
